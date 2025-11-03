@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>福利领取</title>
+
+    <!-- 引入 jQuery -->
+    <script src="jquery.min.js"></script>
+
+    <style>
+        /* 移动端基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: white;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* 防止移动端点击高亮 */
+        * {
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        /* 全屏容器 */
+        .fullscreen-container {
+            width: 100%;
+            background-color: white;
+        }
+
+        /* 全屏图片 */
+        .fullscreen-image {
+            width: 100%;
+            height: auto;
+            pointer-events: auto;
+            display: flex;
+            border: none;
+            vertical-align: middle;
+            cursor: pointer;
+
+        }
+
+        .fullscreen-image:active {
+            opacity: 0.8;
+        }
+
+
+
+        /* 错误提示 */
+        .error-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #fff;
+            padding: 20px;
+        }
+
+        .error-message {
+            font-size: 16px;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .retry-btn {
+            background-color: #007aff;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .retry-btn:active {
+            background-color: #0056cc;
+        }
+
+        /* 安全区域适配 */
+        /* @supports (padding: max(0px)) {
+            .fullscreen-container {
+                padding-top: max(0px, env(safe-area-inset-top));
+                padding-bottom: max(0px, env(safe-area-inset-bottom));
+            }
+        } */
+    </style>
+</head>
+
+<body>
+    <div class="fullscreen-container">
+
+
+        <!-- 错误状态 -->
+        <div id="error" class="error-container" style="display: none;">
+            <div class="error-message" id="error-message">加载失败</div>
+            <button class="retry-btn" onclick="retryLoad()">重试</button>
+        </div>
+
+        <!-- 图片显示 -->
+        <img id="main-image" class="fullscreen-image" style="display: none;" alt="页面图片">
+    </div>
+
+    <script>
+        // 全局变量
+        let urlParams = {
+            type: null,
+            page: null,
+            channelId: null
+        };
+
+        // 获取URL参数
+        function getUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            urlParams.type = params.get('type');
+            urlParams.page = params.get('page');
+            urlParams.channelId = params.get('channelId');
+
+            return urlParams;
+        }
+
+        // 检查参数是否完整
+        function validateParams() {
+            return urlParams.type && urlParams.page && urlParams.channelId;
+        }
+
+        // 重定向到404页面
+        function redirectTo404() {
+            window.location.href = '/404.html';
+        }
+
+        // 获取页面图片URL
+        async function getPageImageUrl(urlId) {
+            try {
+                const response = await $.ajax({
+                    url: `/api/api/loadingPage/pageUrl?id=${encodeURIComponent(urlId)}`,
+                    method: 'GET',
+                    timeout: 15000
+                });
+
+                // 假设API返回格式为 { imageUrl: "图片地址" } 或 { data: { imageUrl: "图片地址" } }
+                const imageUrl = response.data;
+
+                if (!imageUrl) {
+                    throw new Error('API返回的数据中没有找到图片地址');
+                }
+
+                return imageUrl;
+            } catch (error) {
+                console.error('获取页面图片失败:', error);
+                throw new Error('请求异常， 请稍后再试！');
+            }
+        }
+
+        // 获取跳转地址
+        async function getRedirectUrl(type, channelId) {
+            try {
+                const response = await $.ajax({
+                    url: `/api/api/loadingPage/getDirectUrl?type=${encodeURIComponent(type)}&channelId=${encodeURIComponent(channelId)}`,
+                    method: 'GET',
+                    timeout: 10000
+                });
+
+                // 假设API返回格式为 { redirectUrl: "跳转地址" } 或 { data: { redirectUrl: "跳转地址" } }
+                const redirectUrl = response.data.targetUrl
+
+                if (!redirectUrl) {
+                    throw new Error('请求异常， 请稍后再试！');
+                }
+
+                return redirectUrl;
+            } catch (error) {
+                console.error('获取跳转地址失败:', error);
+                throw new Error('请求异常， 请稍后再试！');
+            }
+        }
+
+        // 加载图片
+        function loadImage(imageUrl) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+
+                img.onload = function () {
+                    resolve(imageUrl);
+                };
+
+                img.onerror = function () {
+                    reject(new Error('请求异常， 请稍后再试！'));
+                };
+
+                img.src = imageUrl;
+            });
+        }
+
+        // 显示图片
+        function showImage(imageUrl) {
+            $('#error').hide();
+            $('#main-image').attr('src', imageUrl).show();
+        }
+
+        // 显示错误
+        function showError(message) {
+            $('#main-image').hide();
+            $('#error-message').text(message);
+            $('#error').show();
+        }
+
+        // 图片点击事件
+        async function handleImageClick() {
+            try {
+                // 获取跳转地址
+                const redirectUrl = await getRedirectUrl(urlParams.type, urlParams.channelId);
+
+                // 跳转到目标地址
+                window.location.href = redirectUrl;
+
+            } catch (error) {
+                console.error('跳转失败:', error);
+                // 可以选择显示错误提示或者静默处理
+                alert('请求异常， 请稍后再试！');
+            }
+        }
+
+        // 重试加载
+        window.retryLoad = function () {
+            initPage();
+        };
+
+        // 初始化页面
+        async function initPage() {
+            try {
+                // 隐藏错误提示和图片
+                $('#error').hide();
+                $('#main-image').hide();
+
+                // 获取页面图片URL
+                const imageUrl = await getPageImageUrl(urlParams.page);
+
+                // 加载图片
+                await loadImage(imageUrl);
+
+                // 显示图片
+                showImage(imageUrl);
+
+            } catch (error) {
+                console.error('初始化页面失败:', error);
+                showError(error.message || '请求异常， 请稍后再试！');
+            }
+        }
+
+        // 页面就绪
+        $(document).ready(function () {
+            // 获取URL参数
+            getUrlParams();
+
+            // 检查参数是否完整
+            if (!validateParams()) {
+                // 参数不完整，重定向到404页面
+                redirectTo404();
+                return;
+            }
+
+            // 绑定图片点击事件
+            $('#main-image').on('click', handleImageClick);
+
+            // 初始化页面
+            initPage();
+
+            // 防止双击缩放
+            let lastTouchEnd = 0;
+            $(document).on('touchend', function (event) {
+                const now = (new Date()).getTime();
+                if (now - lastTouchEnd <= 300) {
+                    event.preventDefault();
+                }
+                lastTouchEnd = now;
+            });
+        });
+    </script>
+</body>
+
+</html>
